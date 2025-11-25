@@ -17,12 +17,16 @@ from enum import Enum
 
 from .openharmony_news_crawler import OpenHarmonyNewsCrawler
 from .openharmony_blog_crawler import OpenHarmonyBlogCrawler
+from .huawei_blog_crawler import HuaweiBlogCrawler
+from .huawei_developer_blog_crawler import HuaweiDeveloperBlogCrawler
 
 logger = logging.getLogger(__name__)
 
 class NewsSource(str, Enum):
     OPENHARMONY = "openharmony"
     OPENHARMONY_BLOG = "openharmony_blog"
+    HUAWEI_BLOG = "huawei_blog"
+    HUAWEI_DEVELOPER = "huawei_developer"
     ALL = "all"
 
 class NewsService:
@@ -33,6 +37,8 @@ class NewsService:
     def __init__(self):
         self.openharmony_crawler = OpenHarmonyNewsCrawler()
         self.openharmony_blog_crawler = OpenHarmonyBlogCrawler()
+        self.huawei_blog_crawler = HuaweiBlogCrawler()
+        self.huawei_developer_crawler = HuaweiDeveloperBlogCrawler()
     
     def crawl_news(self, source: NewsSource = NewsSource.ALL) -> List[Dict]:
         """
@@ -116,6 +122,51 @@ class NewsService:
                 articles.extend(blog_articles)
                 logger.info(f"✅ OpenHarmony技术博客爬取完成，获取 {len(blog_articles)} 篇文章，耗时 {end_time-start_time:.2f}秒")
             
+            if source == NewsSource.HUAWEI_BLOG or source == NewsSource.ALL:
+                logger.info("🌐 开始爬取华为开发者文章...")
+                
+                huawei_batch_callback = create_batch_callback("Huawei Developer Blog")
+                start_time = time.time()
+                huawei_articles = self.huawei_blog_crawler.crawl_latest_articles(
+                    batch_callback=huawei_batch_callback, batch_size=10
+                )
+                end_time = time.time()
+                
+                articles.extend(huawei_articles)
+                logger.info(
+                    "✅ 华为开发者文章爬取完成，获取 %s 篇文章，耗时 %.2f秒",
+                    len(huawei_articles),
+                    end_time - start_time,
+                )
+            
+            # 爬取华为开发者博客（新增）
+            if source == NewsSource.HUAWEI_DEVELOPER or source == NewsSource.ALL:
+                logger.info("🌐 开始爬取华为开发者博客（推荐页）...")
+                
+                try:
+                    start_time = time.time()
+                    huawei_dev_articles = self.huawei_developer_crawler.crawl_all(max_articles=20)
+                    end_time = time.time()
+                    
+                    # 格式化文章数据
+                    formatted_articles = []
+                    for article in huawei_dev_articles:
+                        # 生成唯一ID
+                        article_id = f"huawei_dev_{article['url'].split('/')[-1]}"
+                        article['id'] = article_id
+                        formatted_articles.append(article)
+                    
+                    # 批量写入缓存
+                    if formatted_articles:
+                        huawei_dev_callback = create_batch_callback("华为开发者博客")
+                        huawei_dev_callback(formatted_articles)
+                    
+                    articles.extend(formatted_articles)
+                    logger.info(f"✅ 华为开发者博客爬取完成，获取 {len(formatted_articles)} 篇文章，耗时 {end_time-start_time:.2f}秒")
+                except Exception as e:
+                    logger.error(f"❌ 华为开发者博客爬取失败: {e}")
+                    # 不影响其他爬虫，继续执行
+            
         except Exception as e:
             logger.error(f"新闻爬取过程中发生错误: {e}")
             raise
@@ -141,6 +192,18 @@ class NewsService:
                 "name": "OpenHarmony技术博客",
                 "description": "OpenHarmony官网技术博客文章，深度技术分享",
                 "base_url": "https://old.openharmony.cn"
+            },
+            {
+                "source": NewsSource.HUAWEI_BLOG,
+                "name": "Huawei Developer Blog",
+                "description": "华为开发者联盟文章推荐页（最新列表）",
+                "base_url": "https://developer.huawei.com/consumer/cn/blog/recommended"
+            },
+            {
+                "source": NewsSource.HUAWEI_DEVELOPER,
+                "name": "华为开发者博客",
+                "description": "华为开发者社区推荐博客文章（最新）",
+                "base_url": "https://developer.huawei.com/consumer/cn/blog/recommended"
             }
         ]
     

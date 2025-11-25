@@ -232,7 +232,7 @@ async def crawl_news(
 @router.get("/{article_id}", response_model=NewsArticle)
 async def get_article_detail(article_id: str):
     """
-    获取单篇新闻详情
+    获取单篇新闻详情（会动态抓取完整内容）
     """
     try:
         # 从缓存中查找指定文章
@@ -250,6 +250,14 @@ async def get_article_detail(article_id: str):
         all_news = cache.get_news(page=1, page_size=1000)
         for article in all_news.articles:
             if article.id == article_id:
+                # 检查是否是 Huawei Developer 文章，需要抓取完整内容
+                if article.category == "Huawei Developer":
+                    from services.huawei_blog_api_crawler import HuaweiBlogAPICrawler
+                    crawler = HuaweiBlogAPICrawler()
+                    # 动态抓取完整内容
+                    article.content = crawler._fetch_article_content(article.url)
+                    # 关闭浏览器资源
+                    del crawler
                 return article
         
         # 如果没找到，返回404
